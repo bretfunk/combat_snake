@@ -1,5 +1,5 @@
 defmodule CombatSnake.Game.State do
-  defstruct players: %{}, board_width: 30, board_height: 30, game_over: false, game_duration: 60
+  defstruct players: %{}, board_width: 20, board_height: 20, game_over: false, game_duration: 60, inital_player_size: 4
 
   # Function to add a new player to the game state
   def add_player(state, player_id, initial_position) do

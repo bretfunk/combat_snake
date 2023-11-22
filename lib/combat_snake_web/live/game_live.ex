@@ -1,122 +1,115 @@
 defmodule CombatSnakeWeb.GameLive do
   use Phoenix.LiveView
-
-  # remove this shit
-  alias CombatSnake.Game.State
+  alias CombatSnake.Game.GameServer
 
   def mount(_params, _session, socket) do
- # if connected?(socket), do: Phoenix.PubSub.subscribe(CombatSnakeWeb.Endpoint, "game:updates")
-  
- if connected?(socket), do: CombatSnakeWeb.Endpoint.subscribe("game:updates")
-    send(self(), :tick)
+    if connected?(socket) do
+      # Phoenix.PubSub.subscribe(CombatSnakeWeb.Endpoint, "game:updates")
+      CombatSnakeWeb.Endpoint.subscribe("game:updates")
+    end
 
-    {:ok, assign(socket, :state, Map.from_struct(%State{}))}
+    game_state = GameServer.get_state()
+
+    {:ok, assign(socket, %{state: game_state})}
   end
 
-  def handle_event("move", %{"player_id" => player_id, "direction" => direction}, socket) do
-    new_state = move_player(socket.assigns.state, player_id, direction)
+  def handle_info(%{event: "update", payload: %{state: new_state}}, socket) do
     {:noreply, assign(socket, :state, new_state)}
   end
 
-def handle_event("join_game", %{"player_id" => player_id}, socket) do
-  CombatSnake.Game.GameServer.add_player(player_id)
-  {:noreply, socket}
-end
-
-  # gonna need to move faster tbh
   def handle_info(:tick, socket) do
-    new_state = update_game(socket.assigns.state)
+    IO.puts("tick")
+    {:noreply, socket}
+  end
 
-    if new_state.game_over do
-      {:noreply, socket}
-    else
-      # Adjust timing as needed
-      Process.send_after(self(), :tick, 1000)
-      {:noreply, assign(socket, :state, new_state)}
-    end
+  def handle_event("add_player", %{"name" => name}, socket) do
+    GameServer.add_player(name, name)
+    {:noreply, socket}
+  end
+
+  def handle_event("start_game", _, socket) do
+    GameServer.start_game()
+    |> IO.inspect(label: "start game")
+
+    {:noreply, socket}
+  end
+
+  def handle_event("move", %{"direction" => direction}, socket) do
+    # Assuming `player_id` is available in your socket assigns or session
+    player_id = socket.assigns.current_player_id
+    GameServer.move_player(player_id, direction)
+    {:noreply, socket}
   end
 
   def render(assigns) do
     ~H"""
-    <div id="combat-snake-game" class="flex flex-col items-center justify-center p-4">
-      <h1 class="text-2xl font-bold mb-4">🐍 CombatSnake 🐍</h1>
+    <div class="flex flex-col items-center justify-center p-4">
+      <div class="flex justify-between w-full mb-4">
+        <div id="scoreboard">
+          <%= for {_player_id, player} <- assigns.state.players do %>
+            <p><%= player.name %>: <%= player.score %></p>
+          <% end %>
+        </div>
+        <div id="game-timer">
+          Time left: <%= assigns.state.game_duration %>
+        </div>
+      </div>
 
-      <div class="grid grid-cols-#{@board_width} gap-1">
-        <%= for y <- 0..@state.board_height do %>
-          <div class="flex flex-row">
-            <%= for x <- 0..@state.board_width do %>
-              <%= render_cell(@state, x, y) %>
-            <% end %>
-          </div>
+      <div class={grid(assigns)}>
+        <%= for y <- 0..assigns.state.board_height - 1 do %>
+          <%= for x <- 0..assigns.state.board_width - 1 do %>
+            <%= render_cell(assigns, x, y) %>
+          <% end %>
         <% end %>
       </div>
+
+      <form phx-submit="add_player" class="my-4">
+        <input
+          type="text"
+          name="name"
+          placeholder="Enter player name"
+          class="mr-2 p-1 border rounded"
+        />
+        <button type="submit" class="p-1 border rounded bg-blue-500 text-white">Add Player</button>
+      </form>
+
+      <button phx-click="start_game" class="p-1 border rounded bg-green-500 text-white">
+        Start Game
+      </button>
     </div>
     """
   end
 
-  # this needs to be in the genserver
-  defp move_player(state, player_id, direction) do
-    players = state.players
-    player = players[player_id]
+  defp grid(assigns) do
+    # Calculate grid classes
+    grid_cols_class = "grid-cols-#{assigns.state.board_width}"
+    grid_rows_class = "grid-rows-#{assigns.state.board_height}"
 
-    new_position =
-      case direction do
-        "up" -> {player.position_x, player.position_y - 1}
-        "down" -> {player.position_x, player.position_y + 1}
-        "left" -> {player.position_x - 1, player.position_y}
-        "right" -> {player.position_x + 1, player.position_y}
-        _ -> {player.position_x, player.position_y}
-      end
-
-    new_player = Map.put(player, :position_x, elem(new_position, 0))
-    new_player = Map.put(new_player, :position_y, elem(new_position, 1))
-
-    new_players = Map.put(players, player_id, new_player)
-
-    %{state | players: new_players}
-  end
-
-  #  this needs to be in the gen server
-  defp update_game(state) do
-    new_players =
-      Enum.reduce(state.players, %{}, fn {player_id, player}, acc ->
-        # Here we assume that each player has a direction
-        new_position =
-          case player.direction do
-            "up" -> {player.position_x, player.position_y - 1}
-            "down" -> {player.position_x, player.position_y + 1}
-            "left" -> {player.position_x - 1, player.position_y}
-            "right" -> {player.position_x + 1, player.position_y}
-            _ -> {player.position_x, player.position_y}
-          end
-
-        new_player = Map.put(player, :position_x, elem(new_position, 0))
-        new_player = Map.put(new_player, :position_y, elem(new_position, 1))
-
-        Map.put(acc, player_id, new_player)
-      end)
-
-    # Check for collisions and other game logic here
-    # ...
-
-    %{state | players: new_players}
+    "grid " <> grid_cols_class <> grid_rows_class <> "gap-1"
   end
 
   defp render_cell(assigns, x, y) do
-    players = assigns.players
-
-    cond do
-      is_snake_segment?(x, y, players) ->
-        ~H"<div class=\"w-6 h-6 bg-green-500 border border-gray-200\"></div>"
-
-      true ->
-        ~H"<div class=\"w-6 h-6 border border-gray-200\"></div>"
-    end
+    ~H"""
+    <div class="w-6 h-6 border border-gray-200 #{player_color_at(assigns.state.players, {x, y})}">
+    </div>
+    """
   end
 
-  defp is_snake_segment?(x, y, players) do
-    Enum.any?(players, fn {_id, player} ->
-      Enum.any?(player.segments, fn {seg_x, seg_y} -> seg_x == x and seg_y == y end)
+  defp player_color_at(players, position) do
+    players
+    |> Enum.find_value("bg-transparent", fn {_id, player} ->
+      if Enum.member?(player.body, position), do: random_color_class(), else: "bg-black-500"
     end)
+  end
+
+  defp random_color_class() do
+    Enum.random([
+      "bg-red-500",
+      "bg-green-500",
+      "bg-blue-500",
+      "bg-yellow-500",
+      "bg-purple-500",
+      "bg-orange-500"
+    ])
   end
 end

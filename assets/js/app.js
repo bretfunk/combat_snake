@@ -22,6 +22,26 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
+document.addEventListener("keydown", function(event) {
+  let lvEl = document.querySelector("phx-live-view");
+  if (lvEl) {
+    switch (event.key) {
+      case "ArrowUp":
+        lvEl.dispatchEvent(new CustomEvent("move", { detail: { direction: "up" } }));
+        break;
+      case "ArrowDown":
+        lvEl.dispatchEvent(new CustomEvent("move", { detail: { direction: "down" } }));
+        break;
+      case "ArrowLeft":
+        lvEl.dispatchEvent(new CustomEvent("move", { detail: { direction: "left" } }));
+        break;
+      case "ArrowRight":
+        lvEl.dispatchEvent(new CustomEvent("move", { detail: { direction: "right" } }));
+        break;
+    }
+  }
+});
+
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {params: {_csrf_token: csrfToken}})
 
